@@ -21,6 +21,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source library functions
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/validation.sh
+source "${SCRIPT_DIR}/lib/validation.sh"
 # shellcheck source=lib/disk.sh
 source "${SCRIPT_DIR}/lib/disk.sh"
 # shellcheck source=lib/zfs.sh
@@ -39,6 +41,12 @@ DISTRO=""
 DISTRO_VERSION=""
 DRY_RUN=false
 FORCE=false
+VERBOSE=false
+SKIP_PREFLIGHT=false
+ASHIFT=""  # Auto-detect if empty
+COMPRESSION="zstd"  # zstd, lz4, lzjb, gzip, or off
+HOSTNAME=""
+BACKUP_CONFIG=true
 
 # Set log file based on permissions
 if [[ -w /var/log ]]; then
@@ -62,9 +70,16 @@ OPTIONS:
     -p, --pool NAME          ZFS pool name (default: zroot)
     -r, --raid LEVEL         RAID level: none, mirror, raidz1, raidz2, raidz3
     -e, --efi-size SIZE      EFI partition size (default: 1G)
-    -s, --swap-size SIZE     Swap partition size (default: 8G)
+    -s, --swap-size SIZE     Swap partition size (0 to disable, default: 8G)
+    -a, --ashift VALUE       ZFS ashift value (9-16, auto-detect if not specified)
+    -c, --compression TYPE   ZFS compression: zstd, lz4, lzjb, gzip, off (default: zstd)
+    -H, --hostname NAME      Set hostname for new installation
     -n, --dry-run            Show what would be done without making changes
     -f, --force              Skip confirmation prompts
+    -v, --verbose            Enable verbose output
+    -S, --skip-preflight     Skip pre-flight system checks (not recommended)
+    -B, --no-backup          Don't backup existing configuration
+    -l, --log-file PATH      Custom log file path
     -h, --help               Display this help message
 
 EXAMPLES:
@@ -115,6 +130,18 @@ parse_args() {
                 SWAP_SIZE="$2"
                 shift 2
                 ;;
+            -a|--ashift)
+                ASHIFT="$2"
+                shift 2
+                ;;
+            -c|--compression)
+                COMPRESSION="$2"
+                shift 2
+                ;;
+            -H|--hostname)
+                HOSTNAME="$2"
+                shift 2
+                ;;
             -n|--dry-run)
                 DRY_RUN=true
                 shift
@@ -122,6 +149,22 @@ parse_args() {
             -f|--force)
                 FORCE=true
                 shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -S|--skip-preflight)
+                SKIP_PREFLIGHT=true
+                shift
+                ;;
+            -B|--no-backup)
+                BACKUP_CONFIG=false
+                shift
+                ;;
+            -l|--log-file)
+                LOG_FILE="$2"
+                shift 2
                 ;;
             -h|--help)
                 usage
@@ -232,6 +275,20 @@ main() {
 
     # Validate configuration
     validate_config
+
+    # Run pre-flight checks
+    if [[ "$SKIP_PREFLIGHT" == "false" ]]; then
+        if ! preflight_checks; then
+            log_error "Pre-flight checks failed"
+            if [[ "$FORCE" != "true" ]]; then
+                exit 1
+            else
+                log_warn "Continuing anyway (--force specified)"
+            fi
+        fi
+    else
+        log_warn "Skipping pre-flight checks (--skip-preflight specified)"
+    fi
 
     # Display summary and confirm
     display_summary

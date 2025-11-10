@@ -65,12 +65,12 @@ create_zfs_pool() {
     local raid_level="$2"
     shift 2
     local drives=("$@")
-    
+
     log_info "Creating ZFS pool: $pool_name with RAID level: $raid_level"
-    
+
     # Ensure ZFS is available
     ensure_zfs
-    
+
     # Build partition list
     local partitions=()
     for drive in "${drives[@]}"; do
@@ -78,27 +78,61 @@ create_zfs_pool() {
         zfs_part=$(get_zfs_partition "$drive")
         partitions+=("$zfs_part")
     done
-    
+
+    # Determine ashift value
+    local ashift_value="${ASHIFT:-}"
+    if [[ -z "$ashift_value" ]]; then
+        # Auto-detect from first drive
+        local first_drive="${drives[0]}"
+        local phys_bs
+        phys_bs=$(get_physical_block_size "$first_drive" 2>/dev/null || echo "512")
+
+        case "$phys_bs" in
+            512)
+                ashift_value=9
+                ;;
+            4096)
+                ashift_value=12
+                ;;
+            8192)
+                ashift_value=13
+                ;;
+            *)
+                ashift_value=12  # Safe default
+                ;;
+        esac
+        log_info "Auto-detected ashift value: $ashift_value (physical block size: $phys_bs)"
+    else
+        # Validate ashift range
+        if [[ $ashift_value -lt 9 ]] || [[ $ashift_value -gt 16 ]]; then
+            log_error "Invalid ashift value: $ashift_value (must be 9-16)"
+            return 1
+        fi
+        log_info "Using specified ashift value: $ashift_value"
+    fi
+
     # Build zpool create command based on RAID level
-    local zpool_cmd="zpool create -f -o ashift=12"
-    
+    local zpool_cmd="zpool create -f -o ashift=${ashift_value}"
+
     # Pool properties for better performance and compatibility
     zpool_cmd+=" -O acltype=posixacl"
-    zpool_cmd+=" -O compression=lz4"
+    zpool_cmd+=" -O compression=${COMPRESSION:-lz4}"
     zpool_cmd+=" -O dnodesize=auto"
     zpool_cmd+=" -O normalization=formD"
     zpool_cmd+=" -O relatime=on"
     zpool_cmd+=" -O xattr=sa"
     zpool_cmd+=" -O canmount=off"
     zpool_cmd+=" -O mountpoint=/"
-    
+
     # Bootloader properties for ZFSBootMenu
     zpool_cmd+=" -o feature@encryption=enabled"
     zpool_cmd+=" -o feature@bookmark_v2=enabled"
-    
+
+    log_info "Using ZFS compression: ${COMPRESSION:-lz4}"
+
     # Add pool name
     zpool_cmd+=" $pool_name"
-    
+
     # Add RAID configuration
     case "$raid_level" in
         none)
@@ -117,14 +151,14 @@ create_zfs_pool() {
             zpool_cmd+=" raidz3 ${partitions[*]}"
             ;;
     esac
-    
+
     # Create the pool
     execute_cmd "$zpool_cmd"
-    
+
     # Display pool status
     log_info "ZFS pool status:"
     execute_cmd "zpool status $pool_name"
-    
+
     log_success "ZFS pool created successfully"
 }
 
