@@ -2,6 +2,23 @@
 
 A comprehensive BASH script solution for installing [ZFSBootMenu](https://zfsbootmenu.org/) on Linux systems with support for single or multiple drives in various RAID configurations.
 
+## 🎨 NEW: Interactive TUI Available!
+
+We now have a beautiful Text User Interface for guided installation:
+
+```bash
+sudo ./zbm-tui.sh
+```
+
+Features:
+- Visual device selection
+- Step-by-step configuration wizard
+- Real-time validation
+- Live installation progress
+- Perfect for beginners and experts alike
+
+See [TUI_README.md](TUI_README.md) for details.
+
 ## ⚠️ WARNING
 
 **This script will DESTROY all data on the target drives during new installations!**
