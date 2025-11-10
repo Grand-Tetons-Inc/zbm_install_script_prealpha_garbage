@@ -21,12 +21,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source library functions
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/validation.sh
+source "${SCRIPT_DIR}/lib/validation.sh"
 # shellcheck source=lib/disk.sh
 source "${SCRIPT_DIR}/lib/disk.sh"
 # shellcheck source=lib/zfs.sh
 source "${SCRIPT_DIR}/lib/zfs.sh"
 # shellcheck source=lib/bootloader.sh
 source "${SCRIPT_DIR}/lib/bootloader.sh"
+# shellcheck source=lib/system.sh
+source "${SCRIPT_DIR}/lib/system.sh"
 
 # Global configuration
 INSTALL_MODE=""  # "new" or "existing"
@@ -39,6 +43,15 @@ DISTRO=""
 DISTRO_VERSION=""
 DRY_RUN=false
 FORCE=false
+VERBOSE=false
+SKIP_PREFLIGHT=false
+ASHIFT=""  # Auto-detect if empty
+COMPRESSION="zstd"  # zstd, lz4, lzjb, gzip, or off
+HOSTNAME=""
+BACKUP_CONFIG=true
+SOURCE_ROOT="/"
+EXCLUDE_PATHS=()
+COPY_HOME=true
 
 # Set log file based on permissions
 if [[ -w /var/log ]]; then
@@ -62,9 +75,19 @@ OPTIONS:
     -p, --pool NAME          ZFS pool name (default: zroot)
     -r, --raid LEVEL         RAID level: none, mirror, raidz1, raidz2, raidz3
     -e, --efi-size SIZE      EFI partition size (default: 1G)
-    -s, --swap-size SIZE     Swap partition size (default: 8G)
+    -s, --swap-size SIZE     Swap partition size (0 to disable, default: 8G)
+    -a, --ashift VALUE       ZFS ashift value (9-16, auto-detect if not specified)
+    -c, --compression TYPE   ZFS compression: zstd, lz4, lzjb, gzip, off (default: zstd)
+    -H, --hostname NAME      Set hostname for new installation
+    --source-root PATH       Source root for existing mode (default: /)
+    --exclude PATH           Additional paths to exclude (can be used multiple times)
+    --no-copy-home           Don't copy home directories in existing mode
     -n, --dry-run            Show what would be done without making changes
     -f, --force              Skip confirmation prompts
+    -v, --verbose            Enable verbose output
+    -S, --skip-preflight     Skip pre-flight system checks (not recommended)
+    -B, --no-backup          Don't backup existing configuration
+    -l, --log-file PATH      Custom log file path
     -h, --help               Display this help message
 
 EXAMPLES:
@@ -74,8 +97,11 @@ EXAMPLES:
     # Install on mirrored drives
     sudo $0 -m new -d sda,sdb -r mirror
 
-    # Install on existing system with RAIDZ1
-    sudo $0 -m existing -d sda,sdb,sdc -r raidz1
+    # Copy existing system to new mirrored ZFS setup
+    sudo $0 -m existing -d sda,sdb -r mirror
+
+    # Copy existing system excluding specific paths
+    sudo $0 -m existing -d nvme0n1 --exclude /home/user/Downloads --exclude /var/tmp
 
 EOF
     exit 0
@@ -115,6 +141,30 @@ parse_args() {
                 SWAP_SIZE="$2"
                 shift 2
                 ;;
+            -a|--ashift)
+                ASHIFT="$2"
+                shift 2
+                ;;
+            -c|--compression)
+                COMPRESSION="$2"
+                shift 2
+                ;;
+            -H|--hostname)
+                HOSTNAME="$2"
+                shift 2
+                ;;
+            --source-root)
+                SOURCE_ROOT="$2"
+                shift 2
+                ;;
+            --exclude)
+                EXCLUDE_PATHS+=("$2")
+                shift 2
+                ;;
+            --no-copy-home)
+                COPY_HOME=false
+                shift
+                ;;
             -n|--dry-run)
                 DRY_RUN=true
                 shift
@@ -122,6 +172,22 @@ parse_args() {
             -f|--force)
                 FORCE=true
                 shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -S|--skip-preflight)
+                SKIP_PREFLIGHT=true
+                shift
+                ;;
+            -B|--no-backup)
+                BACKUP_CONFIG=false
+                shift
+                ;;
+            -l|--log-file)
+                LOG_FILE="$2"
+                shift 2
                 ;;
             -h|--help)
                 usage
@@ -198,6 +264,20 @@ Dry Run:            $DRY_RUN
 
 EOF
 
+    if [[ "$INSTALL_MODE" == "existing" ]]; then
+        echo "System Copy Settings:"
+        echo "  Source Root:    $SOURCE_ROOT"
+        echo "  Copy Home:      $COPY_HOME"
+        if [[ ${#EXCLUDE_PATHS[@]} -gt 0 ]]; then
+            echo "  Custom Exclusions:"
+            for exclude in "${EXCLUDE_PATHS[@]}"; do
+                echo "    - $exclude"
+            done
+        fi
+        echo ""
+        log_warn "WARNING: Existing system will be copied to new ZFS installation"
+    fi
+
     if [[ "$INSTALL_MODE" == "new" ]]; then
         log_warn "WARNING: All data on the following drives will be DESTROYED:"
         for drive in "${DRIVES[@]}"; do
@@ -233,6 +313,20 @@ main() {
     # Validate configuration
     validate_config
 
+    # Run pre-flight checks
+    if [[ "$SKIP_PREFLIGHT" == "false" ]]; then
+        if ! preflight_checks; then
+            log_error "Pre-flight checks failed"
+            if [[ "$FORCE" != "true" ]]; then
+                exit 1
+            else
+                log_warn "Continuing anyway (--force specified)"
+            fi
+        fi
+    else
+        log_warn "Skipping pre-flight checks (--skip-preflight specified)"
+    fi
+
     # Display summary and confirm
     display_summary
 
@@ -255,6 +349,29 @@ main() {
     # Step 4: Create ZFS datasets
     log_step "Step 4: Creating ZFS datasets"
     create_zfs_datasets "$POOL_NAME"
+
+    # Step 4.5: Copy existing system if in existing mode
+    if [[ "$INSTALL_MODE" == "existing" ]]; then
+        log_step "Step 4.5: Copying existing system"
+
+        # Add /home/* to exclusions if --no-copy-home specified
+        if [[ "$COPY_HOME" == "false" ]]; then
+            log_info "Excluding home directories from copy"
+            EXCLUDE_PATHS+=("/home/*")
+        fi
+
+        # Display copy summary
+        if [[ "$VERBOSE" == "true" ]] || [[ "$DRY_RUN" == "true" ]]; then
+            display_copy_summary
+        fi
+
+        if ! copy_existing_system; then
+            log_error "Failed to copy existing system"
+            if [[ "$FORCE" != "true" ]]; then
+                exit 1
+            fi
+        fi
+    fi
 
     # Step 5: Install ZFSBootMenu
     log_step "Step 5: Installing ZFSBootMenu"

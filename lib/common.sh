@@ -34,6 +34,18 @@ log_step() {
     echo -e "\n${GREEN}=== $* ===${NC}\n" | tee -a "$LOG_FILE"
 }
 
+log_verbose() {
+    if [[ "${VERBOSE:-false}" == "true" ]]; then
+        echo -e "${BLUE}[VERBOSE]${NC} $*" | tee -a "$LOG_FILE"
+    else
+        echo -e "[VERBOSE] $*" >> "$LOG_FILE"
+    fi
+}
+
+log_debug() {
+    echo -e "[DEBUG] $(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG_FILE"
+}
+
 ################################################################################
 # Distribution detection
 ################################################################################
@@ -80,19 +92,37 @@ detect_distribution() {
 
 execute_cmd() {
     local cmd="$*"
-    log_info "Executing: $cmd"
-    
+    log_verbose "Executing: $cmd"
+    log_debug "Command: $cmd"
+
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "[DRY RUN] Would execute: $cmd"
         return 0
     else
-        if eval "$cmd" 2>&1 | tee -a "$LOG_FILE"; then
-            return 0
+        local output
+        local exit_code
+        if [[ "${VERBOSE:-false}" == "true" ]]; then
+            # Show output in verbose mode
+            if eval "$cmd" 2>&1 | tee -a "$LOG_FILE"; then
+                exit_code=0
+            else
+                exit_code=$?
+            fi
         else
-            local exit_code=$?
-            log_error "Command failed with exit code $exit_code: $cmd"
-            return $exit_code
+            # Capture output silently
+            output=$(eval "$cmd" 2>&1)
+            exit_code=$?
+            echo "$output" >> "$LOG_FILE"
         fi
+
+        if [[ $exit_code -ne 0 ]]; then
+            log_error "Command failed with exit code $exit_code: $cmd"
+            if [[ "${VERBOSE:-false}" != "true" ]] && [[ -n "$output" ]]; then
+                log_error "Output: $output"
+            fi
+        fi
+
+        return $exit_code
     fi
 }
 
