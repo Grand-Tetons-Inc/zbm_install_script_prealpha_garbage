@@ -80,8 +80,16 @@ sudo ./zbm_install.sh [OPTIONS]
 | `-r, --raid LEVEL` | RAID level: none, mirror, raidz1, raidz2, raidz3 | No | none |
 | `-e, --efi-size SIZE` | EFI partition size | No | 1G |
 | `-s, --swap-size SIZE` | Swap partition size (0 to disable) | No | 8G |
+| `-a, --ashift VALUE` | ZFS ashift value (9-16, auto-detect if not specified) | No | auto |
+| `-c, --compression TYPE` | ZFS compression algorithm | No | zstd |
+| `-H, --hostname NAME` | Set hostname for new installation | No | - |
+| `--source-root PATH` | Source root for existing mode | No | / |
+| `--exclude PATH` | Paths to exclude (can be used multiple times) | No | - |
+| `--no-copy-home` | Don't copy home directories in existing mode | No | false |
 | `-n, --dry-run` | Show what would be done without changes | No | false |
 | `-f, --force` | Skip confirmation prompts | No | false |
+| `-v, --verbose` | Enable verbose output | No | false |
+| `-S, --skip-preflight` | Skip pre-flight system checks | No | false |
 | `-h, --help` | Display help message | No | - |
 
 ## Examples
@@ -134,18 +142,47 @@ Install without swap partition:
 sudo ./zbm_install.sh -m new -d sda -s 0
 ```
 
+### Migrate Existing System 🚀 NEW!
+
+Copy your running system to a new ZFS installation:
+
+```bash
+# Basic migration to mirrored drives
+sudo ./zbm_install.sh -m existing -d sda,sdb -r mirror
+
+# Advanced migration with custom exclusions
+sudo ./zbm_install.sh -m existing -d nvme0n1 \
+  --exclude /home/*/Downloads \
+  --exclude /var/cache \
+  --no-copy-home \
+  -H newhost \
+  -v
+```
+
 More examples are available in the [examples/](examples/) directory.
 
 ## What the Script Does
 
+### New Installation Mode
 1. **Validates Configuration** - Checks all parameters and system requirements
-2. **Prepares Disks** - Wipes and cleans target drives (in new mode)
+2. **Prepares Disks** - Wipes and cleans target drives
 3. **Creates Partitions** - Sets up EFI, swap (optional), and ZFS partitions
 4. **Creates ZFS Pool** - Initializes ZFS pool with specified RAID level
 5. **Creates Datasets** - Sets up hierarchical ZFS dataset structure
 6. **Installs ZFSBootMenu** - Downloads and configures ZFSBootMenu
 7. **Configures Bootloader** - Sets up systemd-boot or rEFInd
 8. **Finalizes** - Sets boot properties, creates snapshots, updates configuration
+
+### Existing System Mode
+1. **Pre-flight Checks** - Validates source system, checks space requirements
+2. **Prepares Disks** - Creates partitions on target drives
+3. **Creates ZFS Pool** - Initializes ZFS pool with specified RAID level
+4. **Creates Datasets** - Sets up hierarchical ZFS dataset structure
+5. **Copies System** - Uses rsync to copy existing system with intelligent exclusions
+6. **Post-Copy Config** - Clears machine-id, SSH keys, sets hostname
+7. **Installs ZFSBootMenu** - Downloads and configures ZFSBootMenu
+8. **Configures Bootloader** - Sets up boot from new ZFS pool
+9. **Finalizes** - Sets boot properties, creates snapshots
 
 ## ZFS Dataset Structure
 

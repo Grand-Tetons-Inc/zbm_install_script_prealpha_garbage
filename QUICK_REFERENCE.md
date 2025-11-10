@@ -56,6 +56,20 @@ sudo ./zbm_install.sh -m new -d sda,sdb -r mirror --dry-run
 sudo ./zbm_install.sh -m new -d sda -v
 ```
 
+### Migrate Existing System (EXCITING NEW FEATURE!)
+```bash
+# Copy running system to new ZFS mirrored setup
+sudo ./zbm_install.sh -m existing -d sda,sdb -r mirror
+
+# Exclude specific paths during migration
+sudo ./zbm_install.sh -m existing -d nvme0n1 \
+  --exclude /home/user/Downloads \
+  --exclude /var/cache
+
+# Don't copy home directories
+sudo ./zbm_install.sh -m existing -d sda --no-copy-home
+```
+
 ## Option Reference
 
 ### Required Options
@@ -83,6 +97,13 @@ sudo ./zbm_install.sh -m new -d sda -v
 |--------|--------|---------|-------------|
 | `-H, --hostname` | Any string | - | Set hostname for new installation |
 | `-l, --log-file` | File path | `/var/log/zbm_install.log` | Custom log file location |
+
+### Existing System Migration
+| Option | Values | Default | Description |
+|--------|--------|---------|-------------|
+| `--source-root` | Directory path | `/` | Source root for existing mode |
+| `--exclude` | Path pattern | - | Exclude path from copy (repeatable) |
+| `--no-copy-home` | flag | `false` | Skip copying home directories |
 
 ### Execution Control
 | Option | Values | Default | Description |
@@ -225,6 +246,28 @@ sudo ./zbm_install.sh \
   -r raidz2 \
   -c zstd \
   -v
+```
+
+### Migrate Running System to ZFS
+```bash
+# Copy current system to new ZFS mirror with custom exclusions
+sudo ./zbm_install.sh \
+  -m existing \
+  -d sda,sdb \
+  -r mirror \
+  -c zstd \
+  --exclude /home/*/Downloads \
+  --exclude /var/tmp \
+  --exclude /var/cache \
+  -H mynewhost \
+  -v
+
+# Quick migration without home directories
+sudo ./zbm_install.sh \
+  -m existing \
+  -d nvme0n1 \
+  --no-copy-home \
+  -f
 ```
 
 ## Need Help?
