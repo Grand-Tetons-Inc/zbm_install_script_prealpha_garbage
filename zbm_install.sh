@@ -31,6 +31,10 @@ source "${SCRIPT_DIR}/lib/zfs.sh"
 source "${SCRIPT_DIR}/lib/bootloader.sh"
 # shellcheck source=lib/system.sh
 source "${SCRIPT_DIR}/lib/system.sh"
+# shellcheck source=lib/device_tuning.sh
+source "${SCRIPT_DIR}/lib/device_tuning.sh"
+# shellcheck source=lib/network_zap.sh
+source "${SCRIPT_DIR}/lib/network_zap.sh"
 
 # Global configuration
 INSTALL_MODE=""  # "new" or "existing"
@@ -52,6 +56,7 @@ BACKUP_CONFIG=true
 SOURCE_ROOT="/"
 EXCLUDE_PATHS=()
 COPY_HOME=true
+NVME_FORMAT_4K=false
 
 # Set log file based on permissions
 if [[ -w /var/log ]]; then
@@ -88,6 +93,7 @@ OPTIONS:
     -S, --skip-preflight     Skip pre-flight system checks (not recommended)
     -B, --no-backup          Don't backup existing configuration
     -l, --log-file PATH      Custom log file path
+    --nvme-format-4k         Format NVMe drives to 4K sectors (DESTROYS DATA!)
     -h, --help               Display this help message
 
 EXAMPLES:
@@ -188,6 +194,10 @@ parse_args() {
             -l|--log-file)
                 LOG_FILE="$2"
                 shift 2
+                ;;
+            --nvme-format-4k)
+                NVME_FORMAT_4K=true
+                shift
                 ;;
             -h|--help)
                 usage
@@ -333,6 +343,56 @@ main() {
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "DRY RUN MODE - No changes will be made"
     fi
+
+    # Device fitness checks and tuning
+    log_step "Checking device fitness and tuning"
+    for drive in "${DRIVES[@]}"; do
+        log_info "Checking device: $drive"
+
+        # Check device fitness
+        if ! check_device_fitness "$drive"; then
+            log_error "Device fitness check failed for $drive"
+            if [[ "$FORCE" != "true" ]]; then
+                exit 1
+            else
+                log_warn "Continuing anyway (--force specified)"
+            fi
+        fi
+
+        # Verify not source device
+        if ! verify_not_source_device "$drive"; then
+            log_error "Device $drive appears to be the source system device!"
+            log_error "Refusing to proceed to protect running system"
+            exit 1
+        fi
+
+        # Optimize device parameters
+        optimize_device_parameters "$drive"
+
+        # Format NVMe to 4K sectors if requested
+        if [[ "$NVME_FORMAT_4K" == "true" ]] && [[ "$drive" =~ ^nvme ]]; then
+            if nvme_supports_4k "$drive"; then
+                local current_size
+                current_size=$(get_nvme_sector_size "$drive")
+
+                if [[ "$current_size" != "4096" ]]; then
+                    log_warn "Formatting NVMe $drive to 4K sectors..."
+                    if ! set_nvme_4k_sectors "$drive"; then
+                        log_error "Failed to format NVMe device to 4K sectors"
+                        if [[ "$FORCE" != "true" ]]; then
+                            exit 1
+                        fi
+                    fi
+                else
+                    log_info "NVMe $drive already using 4K sectors"
+                fi
+            else
+                log_warn "NVMe $drive does not support 4K sectors"
+            fi
+        fi
+    done
+
+    log_success "All devices passed fitness checks"
 
     # Step 1: Prepare disks
     log_step "Step 1: Preparing disks"
