@@ -316,6 +316,7 @@ class SettingsScreen(BaseScreen):
                 ("hostname", "Hostname", "text"),
                 ("compression", "Compression", "choice", ["lz4", "zstd", "gzip-9", "off"]),
                 ("raid_level", "RAID Level", "choice", ["none", "mirror", "raidz1", "raidz2", "raidz3"]),
+                ("bootloader", "Bootloader", "choice", ["zbm", "systemd-boot", "refind"]),
                 ("ashift", "Ashift", "choice", ["auto", "9", "12", "13"]),
                 ("efi_size", "EFI Size", "text"),
                 ("swap_size", "Swap Size", "text"),
@@ -328,6 +329,7 @@ class SettingsScreen(BaseScreen):
                 ("hostname", "Hostname", "text"),
                 ("compression", "Compression", "choice", ["lz4", "zstd", "gzip-9", "off"]),
                 ("raid_level", "RAID Level", "choice", ["none", "mirror", "raidz1", "raidz2", "raidz3"]),
+                ("bootloader", "Bootloader", "choice", ["zbm", "systemd-boot", "refind"]),
                 ("ashift", "Ashift", "choice", ["auto", "9", "12", "13"]),
                 ("efi_size", "EFI Size", "text"),
                 ("swap_size", "Swap Size", "text"),
@@ -672,6 +674,17 @@ class ConfirmationScreen(BaseScreen):
         y += 1
         ashift = self.state.get("ashift", "auto")
         self.stdplane.putstr_yx(y, start_x + 4, f"Ashift:       {ashift}")
+
+        # Bootloader
+        y += 2
+        self.stdplane.set_fg_rgb8(0x00, 0xff, 0x00)
+        self.stdplane.putstr_yx(y, start_x, "Bootloader:")
+        self.stdplane.set_fg_default()
+
+        y += 1
+        bootloader = self.state.get("bootloader", "zbm")
+        bl_desc = {"zbm": "ZFSBootMenu (standalone)", "systemd-boot": "systemd-boot + ZBM", "refind": "rEFInd + ZBM"}
+        self.stdplane.putstr_yx(y, start_x + 4, f"Type:         {bl_desc.get(bootloader, bootloader)}")
 
         # Partition sizes
         y += 2

@@ -50,6 +50,7 @@ class ZBMNotcursesTUI:
             "drives": [],
             "pool_name": "zroot",
             "raid_level": "none",
+            "bootloader": "zbm",
             "compression": "zstd",
             "ashift": "",
             "efi_size": "1G",

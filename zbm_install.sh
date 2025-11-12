@@ -52,6 +52,7 @@ SKIP_PREFLIGHT=false
 ASHIFT=""  # Auto-detect if empty
 COMPRESSION="zstd"  # zstd, lz4, lzjb, gzip, or off
 HOSTNAME=""
+BOOTLOADER="zbm"  # zbm (default), systemd-boot, or refind
 BACKUP_CONFIG=true
 SOURCE_ROOT="/"
 EXCLUDE_PATHS=()
@@ -84,6 +85,7 @@ OPTIONS:
     -a, --ashift VALUE       ZFS ashift value (9-16, auto-detect if not specified)
     -c, --compression TYPE   ZFS compression: zstd, lz4, lzjb, gzip, off (default: zstd)
     -H, --hostname NAME      Set hostname for new installation
+    -b, --bootloader TYPE    Bootloader: zbm, systemd-boot, refind (default: zbm)
     --source-root PATH       Source root for existing mode (default: /)
     --exclude PATH           Additional paths to exclude (can be used multiple times)
     --no-copy-home           Don't copy home directories in existing mode
@@ -157,6 +159,10 @@ parse_args() {
                 ;;
             -H|--hostname)
                 HOSTNAME="$2"
+                shift 2
+                ;;
+            -b|--bootloader)
+                BOOTLOADER="$2"
                 shift 2
                 ;;
             --source-root)
@@ -242,6 +248,23 @@ validate_config() {
     # Validate RAID level
     validate_raid_level "$RAID_LEVEL" "${#DRIVES[@]}"
 
+    # Validate bootloader
+    if [[ "$BOOTLOADER" != "zbm" && "$BOOTLOADER" != "systemd-boot" && "$BOOTLOADER" != "refind" ]]; then
+        log_error "Invalid bootloader: $BOOTLOADER (must be 'zbm', 'systemd-boot', or 'refind')"
+        exit 1
+    fi
+
+    # Check if requested bootloader exists (only for non-zbm)
+    if [[ "$BOOTLOADER" == "systemd-boot" ]] && ! command_exists bootctl; then
+        log_error "Bootloader 'systemd-boot' requested but bootctl command not found"
+        log_error "Install systemd-boot or use --bootloader zbm"
+        exit 1
+    elif [[ "$BOOTLOADER" == "refind" ]] && ! command_exists refind-install; then
+        log_error "Bootloader 'refind' requested but refind-install command not found"
+        log_error "Install rEFInd or use --bootloader zbm"
+        exit 1
+    fi
+
     # Validate drives exist
     for drive in "${DRIVES[@]}"; do
         if [[ ! -b "/dev/$drive" ]]; then
@@ -267,6 +290,7 @@ Installation Mode:  $INSTALL_MODE
 Pool Name:          $POOL_NAME
 Drives:             ${DRIVES[*]}
 RAID Level:         $RAID_LEVEL
+Bootloader:         $BOOTLOADER
 EFI Partition Size: $EFI_SIZE
 Swap Size:          $SWAP_SIZE
 Distribution:       $DISTRO $DISTRO_VERSION
