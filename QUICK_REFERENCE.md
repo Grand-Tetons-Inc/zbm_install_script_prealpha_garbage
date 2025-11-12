@@ -132,6 +132,10 @@ sudo ./zbm_install.sh -m existing -d nvme0n1,nvme1n1 \
 | Option | Values | Default | Description |
 |--------|--------|---------|-------------|
 | `-a, --ashift` | `9-16` or `auto` | `auto` | ZFS block alignment (9=512B, 12=4K, 13=8K) |
+### ZFS Tuning
+| Option | Values | Default | Description |
+|--------|--------|---------|-------------|
+| `-a, --ashift` | `9-16` | auto-detect | ZFS block alignment (9=512B, 12=4K, 13=8K) |
 | `-c, --compression` | `zstd`, `lz4`, `lzjb`, `gzip`, `off` | `zstd` | Compression algorithm |
 
 ### System Configuration
@@ -329,6 +333,9 @@ sudo reboot
 ### High-Performance NVMe Setup with 4K Sectors
 ```bash
 # NVMe with 4K sector formatting
+### High-Performance SSD Setup
+```bash
+# NVMe SSD with optimal settings
 sudo ./zbm_install.sh \
   -m new \
   -d nvme0n1,nvme1n1 \

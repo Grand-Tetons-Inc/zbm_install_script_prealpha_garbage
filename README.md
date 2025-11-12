@@ -302,6 +302,17 @@ sudo ./zbm_install.sh -m new -d sda --bootloader refind
 
 **Requirements:** `refind-install` command must be available
 
+### Existing System Mode
+1. **Pre-flight Checks** - Validates source system, checks space requirements
+2. **Prepares Disks** - Creates partitions on target drives
+3. **Creates ZFS Pool** - Initializes ZFS pool with specified RAID level
+4. **Creates Datasets** - Sets up hierarchical ZFS dataset structure
+5. **Copies System** - Uses rsync to copy existing system with intelligent exclusions
+6. **Post-Copy Config** - Clears machine-id, SSH keys, sets hostname
+7. **Installs ZFSBootMenu** - Downloads and configures ZFSBootMenu
+8. **Configures Bootloader** - Sets up boot from new ZFS pool
+9. **Finalizes** - Sets boot properties, creates snapshots
+
 ## ZFS Dataset Structure
 
 The script creates the following dataset hierarchy:
