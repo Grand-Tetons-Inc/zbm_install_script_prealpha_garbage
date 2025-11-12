@@ -27,8 +27,7 @@ Thumbs.db
 /tmp/
 test_output/
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
+
+# Added by cargo
+
+/target
